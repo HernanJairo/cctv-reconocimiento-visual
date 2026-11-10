@@ -28,6 +28,27 @@ from .geometry import CrossingLine, RestrictedZone
 from .storage import new_capture_path
 
 
+def _download_model(path, emit=print):
+    """Descarga el .pt faltante dentro de models/ con el downloader de
+    Ultralytics (misma fuente y verificación que usa YOLO internamente).
+
+    Solo aplica a pesos oficiales (yolov8*.pt, yolo11*.pt, …). Para
+    cualquier otro archivo informa cómo resolverlo a mano.
+    """
+    name = os.path.basename(path)
+    emit(f"{name} no encontrado; descargando a models/…")
+    try:
+        from ultralytics.utils.downloads import attempt_download_asset
+        attempt_download_asset(path)
+    except Exception as e:
+        raise FileNotFoundError(
+            f"No se pudo descargar el modelo '{name}': {e}") from e
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            f"Modelo no encontrado: {path}. Descárguelo manualmente a "
+            f"'models/' o corrija 'model_file' en config/settings.yaml.")
+
+
 def load_model(settings, emit=print):
     """Carga el modelo YOLO y hace warm-up de la 1ra inferencia.
 
@@ -38,7 +59,7 @@ def load_model(settings, emit=print):
     torch.set_num_threads(settings.torch_threads)
     path = settings.model_path
     if not os.path.exists(path):
-        raise FileNotFoundError(f"Modelo no encontrado: {path}")
+        _download_model(path, emit)
     emit(f"Cargando modelo {os.path.basename(path)}…")
     model = YOLO(path)
     emit("Warm-up de inferencia…")
@@ -97,6 +118,9 @@ class InferWorker(threading.Thread):
         self._danger_line = None
         self._zone = None
         self._fps_ema = 0.0
+        # imgsz efectivo: la GUI lo ajusta por tipo de fuente (set_imgsz)
+        # para que un stream IP infiera con menos carga que webcam/archivo.
+        self._imgsz = settings.imgsz
 
     # --- API (GUI) ---
     def send(self, *cmd):
@@ -126,6 +150,8 @@ class InferWorker(threading.Thread):
                     self._count_line.reset()
                 if self._danger_line:
                     self._danger_line.reset()
+            elif cmd[0] == "set_imgsz":
+                self._imgsz = int(cmd[1])
 
     def _sync_calibration(self, snap):
         if snap["revision"] == self._calib_rev:
@@ -181,7 +207,7 @@ class InferWorker(threading.Thread):
                 classes=self.s.detect_classes,
                 conf=self.s.conf,
                 iou=self.s.iou,
-                imgsz=self.s.imgsz,
+                imgsz=self._imgsz,
                 tracker=self.s.tracker_cfg,
                 verbose=False,
             )
@@ -274,6 +300,13 @@ class InferWorker(threading.Thread):
         if now - last < self.s.alert_cooldown_s:
             return                                  # cooldown: no spamear
         self._alert_cooldown[tid] = now
+        # Poda acotada: sin ella el dict crece con cada track ID nuevo en
+        # sesiones largas (fuga de memoria lenta).
+        if len(self._alert_cooldown) > 512:
+            cutoff = now - self.s.alert_cooldown_s
+            self._alert_cooldown = {k: v for k, v in
+                                    self._alert_cooldown.items()
+                                    if v >= cutoff}
         ruta = new_capture_path(tid, "alerta")
         self.writer.enqueue_alert(tipo, tid, clean_frame, ruta)
         self._emit("event", msg=f"ALERTA {tipo}: ID #{tid} capturado.")

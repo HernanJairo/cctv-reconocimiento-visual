@@ -46,20 +46,34 @@ def _chip(img, text, org, color, scale=0.5, thick=1, alpha=0.65):
                 (255, 255, 255), thick, cv2.LINE_AA)
 
 
-def _segments_intersect(p, q, a, b):
-    """True si el segmento p->q corta al segmento a->b (test de lados).
+def _on_segment(p, a, b):
+    """True si `p` (colineal con a->b, cross == 0) cae dentro del trazo."""
+    return (min(a[0], b[0]) <= p[0] <= max(a[0], b[0]) and
+            min(a[1], b[1]) <= p[1] <= max(a[1], b[1]))
 
-    Intersección geométrica pura: p y q deben quedar en lados opuestos de
-    la recta a->b Y a y b en lados opuestos de la recta p->q, así el corte
-    ocurre dentro del trazo dibujado y no sobre su prolongación.
+
+def _segments_intersect(p, q, a, b):
+    """True si el segmento p->q corta al segmento a->b.
+
+    Intersección estricta segmento-segmento: p y q deben quedar en lados
+    opuestos de la recta a->b Y a y b en lados opuestos de la recta p->q,
+    así el corte ocurre dentro del trazo dibujado y no sobre su
+    prolongación. Además se contempla el caso de medida cero en que la
+    trayectoria toca un extremo o un punto exacto del trazo (producto
+    cruz == 0, frecuente con líneas dibujadas en coordenadas "redondas"
+    como yn = 0.5): el contacto solo cuenta si cae dentro del segmento.
     """
     s1 = _side_of_line(p, a, b)
     s2 = _side_of_line(q, a, b)
-    if (s1 > 0) == (s2 > 0):
-        return False                        # p y q del mismo lado de a->b
     s3 = _side_of_line(a, p, q)
     s4 = _side_of_line(b, p, q)
-    return (s3 > 0) != (s4 > 0)
+    if (s1 > 0) != (s2 > 0) and (s3 > 0) != (s4 > 0):
+        return True
+    eps = 1e-9
+    return ((abs(s1) < eps and _on_segment(p, a, b)) or
+            (abs(s2) < eps and _on_segment(q, a, b)) or
+            (abs(s3) < eps and _on_segment(a, p, q)) or
+            (abs(s4) < eps and _on_segment(b, p, q)))
 
 
 class CrossingLine:

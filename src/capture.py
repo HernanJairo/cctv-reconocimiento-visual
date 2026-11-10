@@ -17,6 +17,31 @@ import time
 import cv2
 
 
+def read_freshest(cap, drain_max=30, fresh_s=0.025):
+    """Vacia el backlog del decodificador y devuelve el frame MÁS RECIENTE.
+
+    En streams IP/webcam, cap.read() devuelve el frame MÁS VIEJO de la
+    cola interna de FFmpeg/driver: si la decodificación va por detrás de
+    la llegada de paquetes, el retardo crece sin límite (delay
+    acumulativo). Un grab() que retorna al instante indica paquetes
+    encolados (frames viejos): se descartan sin retrieve(). Cuando grab()
+    se bloquea esperando a la red/driver (>= `fresh_s`), ese paquete
+    recién llegado es el más fresco -> se recupera con retrieve().
+
+    `drain_max` acota el vaciado: si la red satura más rápido de lo que
+    se puede decodificar, el bucle nunca se bloquea indefinidamente.
+    """
+    ok = True
+    for _ in range(drain_max):
+        t = time.monotonic()
+        ok = cap.grab()
+        if not ok:
+            break
+        if time.monotonic() - t >= fresh_s:
+            break                       # esperó a la red -> frame fresco
+    return cap.retrieve() if ok else (False, None)
+
+
 class FrameSlot:
     """Buzón de un solo slot con secuencia: el último frame pisa al anterior."""
 
@@ -99,6 +124,9 @@ class CaptureThread(threading.Thread):
             # entorno ANTES de crear el VideoCapture.
             os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = self.s.ffmpeg_options
             cap = cv2.VideoCapture(self.spec["url"], cv2.CAP_FFMPEG)
+            # Cola interna mínima (HTTP MJPEG / backends que lo honran);
+            # el vaciado real del backlog lo hace read_freshest() abajo.
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         else:  # file
             cap = cv2.VideoCapture(self.spec["path"])
         return cap
@@ -192,7 +220,14 @@ class CaptureThread(threading.Thread):
                     time.sleep(0.04)
                     continue
 
-                ret, frame = self.cap.read()
+                if self.is_file or not self.s.low_latency:
+                    ret, frame = self.cap.read()
+                else:
+                    # Stream/webcam: descarta frames encolados (viejos) y
+                    # entrega solo el último. framedrop a nivel de app.
+                    ret, frame = read_freshest(
+                        self.cap, self.s.drain_max_grabs,
+                        self.s.fresh_grab_ms / 1000.0)
                 if not ret:
                     fails += 1
                     if self.is_file:

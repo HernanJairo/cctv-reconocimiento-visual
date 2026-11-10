@@ -78,6 +78,7 @@ class SecurityApp(ctk.CTk):
         # --- estado de render ---
         self._last_out_seq = -1
         self._cached_pil = None          # PIL del último frame anotado
+        self._painted_key = None         # (seq, w, h) ya pintado en pantalla
         self._disp = (0, 0, 1.0, 16, 9)  # ox, oy, scale, img_w, img_h
         self._slider_updating = False
         self._is_seeking = False         # drag del slider DVR en curso
@@ -419,13 +420,18 @@ class SecurityApp(ctk.CTk):
         self._set_status("Conectando…", C_AMBER)
         self.btn_iniciar.configure(text="⏹  Detener Cámara",
                                    fg_color=C_RED, hover_color=C_RED_H)
+        # imgsz por fuente: un stream IP infiere con entrada menor para
+        # absorber jitter/lag de red sin sacrificar FPS de analítica.
+        imgsz = (self.s.imgsz_stream if spec["kind"] == "stream"
+                 else self.s.imgsz)
+        self.infer_thread.send("set_imgsz", imgsz)
         self.cap_thread = CaptureThread(spec, self.s, self.in_slot, self.status_q)
         self.cap_thread.start()
         self.running = True
         self._paused = False
         self._is_seeking = False
         self.btn_pause.configure(text="⏸", fg_color=C_ACCENT)
-        self._log("Iniciando pipeline de video…")
+        self._log(f"Iniciando pipeline de video… (inferencia imgsz={imgsz})")
 
     def _stop_pipeline(self):
         self.running = False
@@ -436,6 +442,10 @@ class SecurityApp(ctk.CTk):
                                    fg_color=C_EMERALD,
                                    hover_color=C_EMERALD_H)
         self._set_status("Detenido", C_MUTED)
+        # Soltar el frame cacheado: sin esto, un <Configure> (resize)
+        # repintaría el último cuadro sobre el texto "Cámara detenida".
+        self._cached_pil = None
+        self._painted_key = None
         self.video_label.configure(image="", text="Cámara detenida")
         self._log("Monitoreo detenido por el usuario.")
 
@@ -501,7 +511,7 @@ class SecurityApp(ctk.CTk):
             self.lbl_alertas.configure(text=str(self._alert_count))
 
     def _render_tick(self):
-        """Drena el último frame anotado y lo pinta. Corre en el mainloop."""
+        """Compositor desacoplado a render_fps. Corre en el mainloop."""
         data, seq = self.out_slot.latest()
         if data is not None and seq != self._last_out_seq:
             self._last_out_seq = seq
@@ -514,6 +524,13 @@ class SecurityApp(ctk.CTk):
 
             rgb = cv2.cvtColor(data["frame"], cv2.COLOR_BGR2RGB)
             self._cached_pil = Image.fromarray(rgb)
+
+        # Hold-last-frame: si captura/inferencia se demora con un frame
+        # (frame drops del stream), en cada tick se repinta el último
+        # cuadro cacheado — la pantalla nunca queda en negro ni alterna
+        # imagen/texto, así no hay "flash" ni parpadeo. _repaint() es
+        # idempotente: no repite el resize si (seq, tamaño) no cambió.
+        if self.running and self._cached_pil is not None:
             self._repaint()
 
         self.after(max(15, int(1000 / self.s.render_fps)), self._render_tick)
@@ -523,6 +540,9 @@ class SecurityApp(ctk.CTk):
             return
         w = max(100, self.video_label.winfo_width())
         h = max(100, self.video_label.winfo_height())
+        key = (self._last_out_seq, w, h)
+        if key == self._painted_key:
+            return                       # mismo cuadro al mismo tamaño
         iw, ih = self._cached_pil.size
         scale = min(w / iw, h / ih)
         dw, dh = max(1, int(iw * scale)), max(1, int(ih * scale))
@@ -536,6 +556,7 @@ class SecurityApp(ctk.CTk):
         tk_img = ImageTk.PhotoImage(resized)
         self.video_label.configure(image=tk_img, text="")
         self.video_label.image = tk_img
+        self._painted_key = key
 
     def _tick_topbar(self):
         """Reloj digital + indicador LIVE pulsante. Corre en el mainloop."""
@@ -692,6 +713,10 @@ class SecurityApp(ctk.CTk):
         hora = datetime.now().strftime("%H:%M:%S")
         self.log_box.insert("end", f"[{hora}] {text}\n")
         self.log_box.see("end")
+        # Buffer acotado: sin recorte el Textbox crece indefinidamente en
+        # sesiones largas con muchos eventos (fuga de memoria en la GUI).
+        if int(self.log_box.index("end-1c").split(".")[0]) > 400:
+            self.log_box.delete("1.0", "201.0")
 
     def _set_status(self, text, color):
         self.lbl_status.configure(text=f"● {text}", text_color=color)

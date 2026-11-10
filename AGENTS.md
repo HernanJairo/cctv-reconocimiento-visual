@@ -2,8 +2,11 @@
 
 ## Ejecutar
 ```
-python main.py                  # lanzar la aplicación (único entrypoint)
-python main.py --export-onnx    # regenerar models/yolov8n.onnx
+iniciar.bat                          # lanzador 1-clic (crea venv, instala deps, descarga modelo)
+python main.py                       # lanzar la aplicación (único entrypoint)
+python main.py --export-onnx         # regenerar models/yolov8n.onnx
+python tests/benchmark_pipeline.py   # benchmark 60 s: fps, latencia e2e, RAM
+python tests/test_line_crossing.py   # test cruce de línea anti-salto (sin modelo ni GUI)
 ```
 
 ## Estructura

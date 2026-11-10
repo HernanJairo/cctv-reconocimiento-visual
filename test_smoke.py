@@ -8,18 +8,23 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # 1) Config de detección
 from src.config import load_settings
 s = load_settings()
-assert s.iou == 0.65, s.iou
-assert s.conf == 0.15, s.conf
+assert s.iou == 0.55, s.iou
+assert s.conf == 0.35, s.conf
 assert s.imgsz == 576, s.imgsz
+assert s.imgsz_stream in (480, 512), s.imgsz_stream
 assert s.model_file == "yolov8s.pt", s.model_file
+assert s.detect_classes == [0], s.detect_classes
+assert s.low_latency and s.drain_max_grabs == 30
 assert s.tracker_cfg.endswith("bytetrack_cctv.yaml"), s.tracker_cfg
 import yaml
 with open(s.tracker_cfg, encoding="utf-8") as f:
     trk = yaml.safe_load(f)
 assert trk["match_thresh"] == 0.60, trk
 assert trk["track_buffer"] == 60, trk
+assert trk["new_track_thresh"] == 0.45, trk
 print("1) Config detección/tracker OK:", s.iou, s.conf, s.imgsz,
-      s.model_file, "| match", trk["match_thresh"])
+      s.model_file, "| match", trk["match_thresh"],
+      "| new_track", trk["new_track_thresh"])
 
 # 2) Construcción de la GUI (sin modelo: el worker lo carga en bg)
 import customtkinter as ctk

@@ -14,8 +14,9 @@ class Settings:
     # --- Modelo / inferencia ---
     model_file: str = "yolov8n.pt"        # puede ser yolov8n.onnx
     imgsz: int = 512
-    conf: float = 0.30
-    iou: float = 0.65                     # NMS alto: conserva personas solapadas
+    imgsz_stream: int = 512               # streams IP: menos carga por inferencia
+    conf: float = 0.35                    # estricto: corta falsos positivos
+    iou: float = 0.55                     # NMS: separa personas sin duplicar
     tracker: str = "bytetrack.yaml"       # evita warnings GMC de BoT-SORT
     torch_threads: int = 4                # deja hilos libres para captura+GUI
     detect_classes: list = field(default_factory=lambda: [0])  # personas
@@ -56,6 +57,13 @@ class Settings:
         "|reconnect_streamed;1"
         "|reconnect_delay_max;2"
     )
+
+    # --- Captura de baja latencia (streams IP / webcam) ---
+    # Vacía el backlog del decodificador: latest-frame-wins también
+    # dentro de FFmpeg/driver, no solo en el FrameSlot.
+    low_latency: bool = True
+    drain_max_grabs: int = 30             # tope de frames viejos por lectura
+    fresh_grab_ms: float = 25.0           # grab() >= esto = esperó a la red
 
     read_fail_threshold: int = 30         # lecturas fallidas antes de reconectar
     reconnect_backoff_s: tuple = (1.0, 2.0, 4.0, 8.0, 10.0)

@@ -1,5 +1,15 @@
-@'
 # 📹 Sistema Integral de Videovigilancia y Auditoría Forense CCTV
+
+## ⚡ Inicio Rápido (1 Clic)
+
+> **Requisito único:** tener **Python 3.10 o superior** instalado. Al instalarlo desde [python.org/downloads](https://www.python.org/downloads/) marca la casilla **"Add Python to PATH"**.
+
+1. Descarga el repositorio como **ZIP** desde GitHub (botón `Code → Download ZIP`) o clónalo, y descomprime la carpeta.
+2. Haz **doble clic en `iniciar.bat`**.
+
+El lanzador hace todo solo: verifica Python, crea el entorno virtual `venv`, instala las dependencias y descarga el modelo de IA (`yolov8s.pt`) la primera vez. Las ejecuciones siguientes arrancan directamente. Si algo falla, la ventana muestra el motivo y espera una tecla antes de cerrarse.
+
+---
 
 Sistema de visión artificial y analítica perimetral en tiempo real desarrollado en Python. Implementa detección, seguimiento continuo (*tracking*), aforo, detección de intrusión en líneas/zonas y registro forense asíncrono con base de datos SQLite y visor interactivo.
 
@@ -86,15 +96,25 @@ Visor modal interactivo con zoom mediante rueda del mouse y navegación por flec
 
 Exportación de la base de datos a reportes en formato CSV.
 
-📦 Instalación y Uso
+## 📦 Instalación manual (alternativa para desarrolladores)
+
+Si prefieres no usar `iniciar.bat`, puedes instalarlo por terminal:
+
 1. Clonar el repositorio
-Bash
-git clone [https://github.com/HernanJairo/cctv-reconocimiento-visual.git](https://github.com/HernanJairo/cctv-reconocimiento-visual.git)
+```bash
+git clone https://github.com/HernanJairo/cctv-reconocimiento-visual.git
 cd cctv-reconocimiento-visual
-2. Instalar dependencias
-Bash
+```
+2. Crear entorno virtual e instalar dependencias
+```bash
+python -m venv venv
+venv\Scripts\activate        # en Linux/Mac: source venv/bin/activate
 pip install -r requirements.txt
+```
 3. Ejecutar
-Bash
+```bash
 python main.py
-Nota: Al iniciar, la aplicación realiza un calentamiento del modelo en memoria (~5 segundos) para asegurar estabilidad de ejecución en Windows. Una vez completado, el botón "Iniciar" se habilitará automáticamente.
+```
+> Si `models/yolov8s.pt` no existe, la aplicación lo descarga automáticamente al arrancar (requiere conexión a internet solo esa vez).
+
+**Nota:** Al iniciar, la aplicación realiza un calentamiento del modelo en memoria (~5 segundos) para asegurar estabilidad de ejecución en Windows. Una vez completado, el botón "Iniciar" se habilitará automáticamente.

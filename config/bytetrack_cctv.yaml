@@ -1,11 +1,11 @@
 # ============================================================
-# ByteTrack afinado para CCTV — persistencia de IDs a baja
-# confianza (conf=0.15) e inferencia en CPU.
+# ByteTrack afinado para CCTV — filtrado estricto anti-falsos-
+# positivos (conf=0.35) e inferencia en CPU.
 # ============================================================
 tracker_type: bytetrack     # NO cambiar a botsort (warnings GMC, más lento)
-track_high_thresh: 0.20     # primer matching: detecciones de score >= esto
-track_low_thresh: 0.1       # segundo matching: recupera detecciones débiles
-new_track_thresh: 0.25      # score mínimo para crear un track nuevo
+track_high_thresh: 0.35     # primer matching: detecciones de score >= esto
+track_low_thresh: 0.1       # segundo matching: sostiene tracks en oclusión
+new_track_thresh: 0.45      # un ID nuevo exige evidencia fuerte (anti-FP)
 track_buffer: 60            # frames que sobrevive un track perdido (~2s @30fps)
 match_thresh: 0.60          # asociación estricta: dos personas solapadas NO se fusionan
 fuse_score: true            # fusiona score con IoU/movimiento al asociar
