@@ -1,0 +1,19 @@
+﻿# Entornos y temporales
+__pycache__/
+*.pyc
+.env
+venv/
+
+# Modelos pesados (evita superar limites de GitHub)
+models/*.pt
+models/*.onnx
+
+# Datos locales y evidencias
+data/capturas/*.jpg
+data/reportes/*.csv
+data/seguridad.db
+data/videos/*.mp4
+
+# Configuración de editores
+.vscode/
+.idea/

@@ -1,0 +1,21 @@
+# --- Núcleo de visión ---
+ultralytics==8.4.144
+opencv-contrib-python==4.13.0.92   # desinstalar opencv-python si coexistiera
+numpy==2.4.4
+lap==0.5.13                      # solver de asignación requerido por ByteTrack
+
+# --- ML ---
+torch==2.14.0                    # build CPU (sin CUDA)
+torchvision==0.29.0
+
+# --- Aceleración opcional ONNX (ver config/settings.yaml) ---
+onnx==1.23.2
+onnxruntime==1.31.1
+
+# --- GUI ---
+customtkinter==6.0.0
+pillow==12.3.0
+darkdetect==0.8.0
+
+# --- Configuración ---
+PyYAML==6.0.3

@@ -1,0 +1,38 @@
+# ============================================================
+#  CCTV Inteligente — Configuración
+#  Todos los valores son opcionales; los ausentes usan defaults.
+# ============================================================
+
+# --- Modelo / inferencia ---
+model_file: "yolov8s.pt"      # 's' recupera personas lejanas/pequeñas que 'n' pierde
+imgsz: 576                  # equilibrio CPU: capta personas lejanas sin caída de FPS
+conf: 0.15                  # capta personas de espaldas / bajo contraste
+iou: 0.65                   # NMS permisivo: no suprime a quien camina pegado a otro
+tracker: "bytetrack_cctv.yaml"   # YAML propio en config/ (buffer 60, match 0.60)
+torch_threads: 4            # hilos de CPU para PyTorch (resto para captura/GUI)
+
+# --- Pipeline ---
+analysis_width: 960         # lienzo interno fijo de analítica
+analysis_height: 540
+render_fps: 30              # refresco de la GUI
+jpeg_quality: 90            # calidad de fotos de evidencia
+
+# --- Analítica ---
+line_hysteresis_px: 5       # banda muerta anti-doble-conteo (px en lienzo)
+alert_cooldown_s: 8.0       # segundos mínimos entre alertas del mismo track ID
+alert_banner_s: 2.5         # duración del banner de intrusión en pantalla
+invert_direction: false     # invertir sentido ENTRADA/SALIDA de la línea de conteo
+
+# --- Fuentes ---
+webcam_index: 0
+webcam_width: 640
+webcam_height: 480
+webcam_fps: 30
+webcam_mirror: true         # modo espejo (flip horizontal) solo en webcam integrada
+default_stream_url: "http://192.168.100.XX:8080/video"
+
+# Flags FFmpeg para streams IP/RTSP (formato OpenCV: clave;valor | ...).
+ffmpeg_options: "rtsp_transport;tcp|stimeout;5000000|max_delay;500000|fflags;nobuffer|flags;low_delay|probesize;32|analyzeduration;0|reconnect;1|reconnect_streamed;1|reconnect_delay_max;2"
+
+read_fail_threshold: 30     # lecturas fallidas seguidas antes de reconectar
+reconnect_backoff_s: [1.0, 2.0, 4.0, 8.0, 10.0]
