@@ -13,12 +13,19 @@ from .paths import SETTINGS_PATH, MODELS_DIR, VIDEOS_DIR, CONFIG_DIR
 class Settings:
     # --- Modelo / inferencia ---
     model_file: str = "yolov8n.pt"        # puede ser yolov8n.onnx
-    imgsz: int = 512
-    imgsz_stream: int = 512               # streams IP: menos carga por inferencia
-    conf: float = 0.35                    # estricto: corta falsos positivos
-    iou: float = 0.55                     # NMS: separa personas sin duplicar
+    imgsz: int = 640                      # conserva detalle de peatones lejanos
+    imgsz_stream: int = 480               # streams IP: menos carga por inferencia
+    infer_stride: int = 3                 # cadencia de oferta al hilo de
+                                         # inferencia asíncrona (no bloquea visor)
+    conf: float = 0.20                    # peatones lejanos puntúan 0.20-0.30
+    iou: float = 0.50                     # NMS permisivo con grupos a lo lejos
     tracker: str = "bytetrack.yaml"       # evita warnings GMC de BoT-SORT
-    torch_threads: int = 4                # deja hilos libres para captura+GUI
+    # Hilos de PyTorch: autodetección por hardware (universal). En PCs de
+    # 2-4 núcleos siempre quedan núcleos libres para GUI/captura/SO; en
+    # equipos grandes no hace falta más — la inferencia es asíncrona.
+    # Sobrescribible desde settings.yaml si hiciera falta forzar un valor.
+    torch_threads: int = field(
+        default_factory=lambda: max(1, min(4, (os.cpu_count() or 2) - 1)))
     detect_classes: list = field(default_factory=lambda: [0])  # personas
 
     # --- Pipeline ---
@@ -42,12 +49,23 @@ class Settings:
     default_video: str = field(
         default_factory=lambda: os.path.join(VIDEOS_DIR, "prueba.mp4"))
     default_stream_url: str = "http://192.168.100.XX:8080/video"
+    # Presets del menú "🎬 Videos de prueba": clips locales en
+    # data/videos/ (versionados en el repo — funcionan sin internet).
+    # Si alguno falta, src/demo_video.py lo sintetiza localmente.
+    video_presets: list = field(default_factory=lambda: [
+        {"name": "Personas caminando — interior", "file": "prueba.mp4"},
+        {"name": "Vista elevada — peatones en calle", "file": "peatones_calle.mp4"},
+        {"name": "Retail — pasillo de tienda", "file": "retail.mp4"},
+        {"name": "Vista de zona — trabajadores", "file": "zona_trabajo.mp4"},
+    ])
 
     # Opciones FFmpeg para streams IP/RTSP (baja latencia + reconexión).
     # Formato OpenCV: pares "clave;valor" separados por "|".
     ffmpeg_options: str = (
         "rtsp_transport;tcp"
         "|stimeout;5000000"
+        "|timeout;8000000"          # socket TCP/HTTP (µs) — bound al open/read
+        "|rw_timeout;8000000"       # stall de lectura en streams HTTP/HLS
         "|max_delay;500000"
         "|fflags;nobuffer"
         "|flags;low_delay"

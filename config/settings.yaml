@@ -5,13 +5,21 @@
 
 # --- Modelo / inferencia ---
 model_file: "yolov8s.pt"      # 's' recupera personas lejanas/pequeñas que 'n' pierde
-imgsz: 576                  # equilibrio CPU: capta personas lejanas sin caída de FPS
-imgsz_stream: 512           # stream IP/WiFi (celular): entrada menor a YOLO da margen de FPS ante jitter de red
-conf: 0.35                  # estricto: juguetes/texturas ya no se leen como persona
-iou: 0.55                   # NMS balanceado: separa personas sin duplicar cajas
+imgsz: 640                  # 640 conserva el detalle de peatones lejanos
+                            # (siluetas pequeñas en el fondo se pierden a 512)
+imgsz_stream: 480           # stream IP/WiFi (celular): entrada menor a YOLO da margen de FPS ante jitter de red
+infer_stride: 3             # cadencia de oferta al hilo de inferencia asíncrona:
+                            # YOLO corre continuo sobre el frame más reciente
+                            # (el visor NO espera — publica a cadencia de fuente);
+                            # stride 3 ≈ detección cada ~100 ms: ByteTrack mantiene
+                            # la correlación en siluetas de pocos píxeles
+conf: 0.20                  # peatones lejanos puntúan 0.20-0.30; 0.35 los borraba
+iou: 0.50                   # NMS permisivo: no suprime personas juntas a lo lejos
 detect_classes: [0]         # SOLO 'person' de COCO (filtro de clase estricto)
-tracker: "bytetrack_cctv.yaml"   # YAML propio en config/ (buffer 60, match 0.60)
-torch_threads: 4            # hilos de CPU para PyTorch (resto para captura/GUI)
+tracker: "bytetrack_cctv.yaml"   # YAML propio en config/ (buffer 60, match 0.65, new_track 0.20)
+# torch_threads: AUTODETECTADO -> max(1, min(4, cpu_count-1)) en
+# src/config.py. En laptops de 2-4 núcleos siempre quedan hilos libres
+# para la GUI y el SO (la inferencia ya corre en su propio hilo).
 
 # --- Pipeline ---
 analysis_width: 960         # lienzo interno fijo de analítica
@@ -31,16 +39,29 @@ webcam_width: 640
 webcam_height: 480
 webcam_fps: 30
 webcam_mirror: true         # modo espejo (flip horizontal) solo en webcam integrada
-# Cámara Ezviz CS-C6N detectada en 192.168.100.59 (MAC a0:ff:0c, OUI Hikvision).
-# NOTA 2026-11-10: el firmware actual tiene el servicio RTSP APAGADO (puerto 554
-# rechaza conexiones; escaneo 1-65535 sin RTSP). La URL queda preconfigurada
-# por si se habilita RTSP en un firmware futuro; hoy usar webcam o archivo MP4.
-default_stream_url: "rtsp://admin:ABLLAD@192.168.100.59:554/h264/ch1/main"
+# URL de la cámara IP / celular en la red LOCAL del usuario (app tipo
+# IP Webcam/DroidCam o RTSP de cámara propia). Es solo el valor inicial
+# del campo de texto de la GUI; el usuario lo reemplaza por el suyo.
+default_stream_url: "http://192.168.1.XX:8080/video"
+
+# Banco de videos locales de prueba (menú "🎬 Videos de prueba" de la
+# GUI). Los clips viven versionados en data/videos/ — el sistema funciona
+# 100% sin internet. Si falta alguno, src/demo_video.py lo sintetiza
+# localmente. Todos se reproducen en bucle infinito (EOF -> reinicio).
+video_presets:
+  - name: "Personas caminando — interior"
+    file: "prueba.mp4"
+  - name: "Vista elevada — peatones en calle"
+    file: "peatones_calle.mp4"
+  - name: "Retail — pasillo de tienda"
+    file: "retail.mp4"
+  - name: "Vista de zona — trabajadores"
+    file: "zona_trabajo.mp4"
 
 # Flags FFmpeg para streams IP/RTSP (formato OpenCV: clave;valor | ...).
 # fflags=nobuffer + flags=low_delay minimizan el buffer interno; el
 # framedrop de frames viejos lo ejecuta read_freshest() en capture.py.
-ffmpeg_options: "rtsp_transport;tcp|stimeout;5000000|max_delay;500000|fflags;nobuffer|flags;low_delay|reorder_queue_size;0|probesize;32|analyzeduration;0|reconnect;1|reconnect_streamed;1|reconnect_delay_max;2"
+ffmpeg_options: "rtsp_transport;tcp|stimeout;5000000|timeout;8000000|rw_timeout;8000000|max_delay;500000|fflags;nobuffer|flags;low_delay|reorder_queue_size;0|probesize;32|analyzeduration;0|reconnect;1|reconnect_streamed;1|reconnect_delay_max;2"
 
 # Vaciado del backlog del decodificador (zero-delay en streams/webcam):
 # un grab() que retorna al instante = frame viejo encolado -> descartado;

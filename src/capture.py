@@ -123,7 +123,19 @@ class CaptureThread(threading.Thread):
             # Flags FFmpeg de baja latencia y reconexión: deben estar en el
             # entorno ANTES de crear el VideoCapture.
             os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = self.s.ffmpeg_options
-            cap = cv2.VideoCapture(self.spec["url"], cv2.CAP_FFMPEG)
+            try:
+                # Timeouts a nivel API de OpenCV (ms): acotan el open() y
+                # cada read() aunque el socket FFmpeg se quede colgado;
+                # combinados con read_fail_threshold garantizan que un
+                # stream cortado o al final del buffer derive en una
+                # reconexión limpia sin congelar nada (todo ocurre aquí,
+                # en este hilo — la GUI nunca se entera).
+                cap = cv2.VideoCapture(
+                    self.spec["url"], cv2.CAP_FFMPEG,
+                    [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 8000,
+                     cv2.CAP_PROP_READ_TIMEOUT_MSEC, 8000])
+            except cv2.error:
+                cap = cv2.VideoCapture(self.spec["url"], cv2.CAP_FFMPEG)
             # Cola interna mínima (HTTP MJPEG / backends que lo honran);
             # el vaciado real del backlog lo hace read_freshest() abajo.
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)

@@ -2,7 +2,7 @@
 
 Punto de entrada único:
     python main.py                  → lanzar la aplicación
-    python main.py --export-onnx    → exportar models/yolov8n.pt a ONNX
+    python main.py --export-onnx    → exportar el .pt configurado a ONNX
 """
 import argparse
 import os
@@ -12,8 +12,9 @@ import sys
 # inicialice su backend de captura.
 os.environ.setdefault(
     "OPENCV_FFMPEG_CAPTURE_OPTIONS",
-    "rtsp_transport;tcp|stimeout;5000000|max_delay;500000|fflags;nobuffer"
-    "|flags;low_delay|probesize;32|analyzeduration;0"
+    "rtsp_transport;tcp|stimeout;5000000|timeout;8000000|rw_timeout;8000000"
+    "|max_delay;500000|fflags;nobuffer|flags;low_delay|probesize;32"
+    "|analyzeduration;0"
     "|reconnect;1|reconnect_streamed;1|reconnect_delay_max;2")
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -24,16 +25,19 @@ from src.paths import MODELS_DIR  # noqa: E402
 
 def export_onnx():
     from ultralytics import YOLO
-    src = os.path.join(MODELS_DIR, "yolov8n.pt")
-    print(f"Exportando {src} → ONNX (imgsz=512)…")
-    YOLO(src).export(format="onnx", imgsz=512, simplify=True, opset=12)
-    print("Listo. Para usarlo, en config/settings.yaml ponga: model_file: yolov8n.onnx")
+    s = load_settings()
+    src = s.model_path
+    dst = os.path.splitext(src)[0] + ".onnx"
+    print(f"Exportando {src} → ONNX (imgsz={s.imgsz})…")
+    YOLO(src).export(format="onnx", imgsz=s.imgsz, simplify=True, opset=12)
+    print(f"Listo: {dst}. Para usarlo, en config/settings.yaml ponga: "
+          f"model_file: {os.path.basename(dst)}")
 
 
 def main():
     ap = argparse.ArgumentParser(description="CCTV Inteligente — Videovigilancia")
     ap.add_argument("--export-onnx", action="store_true",
-                    help="exporta yolov8n.pt a ONNX y sale")
+                    help="exporta el .pt configurado a ONNX y sale")
     args = ap.parse_args()
 
     if args.export_onnx:

@@ -278,8 +278,10 @@ RAM (RSS)       : {rss_first:6.0f} MB -> {rss_last:6.0f} MB \
         print("WARN  p95 > 200 ms: la inferencia limita; la latencia sigue"
               " acotada si la deriva es plana. Opciones: yolov8n/ONNX o"
               " imgsz 512.")
-    if abs(drift) < 20:
-        print("PASS  deriva de latencia plana (sin delay acumulativo)")
+    if drift < 20:
+        # Solo la deriva POSITIVA grande indica retardo acumulativo; una
+        # deriva negativa es el warm-up estabilizando la medición.
+        print("PASS  deriva de latencia plana o descendente (sin delay acumulativo)")
     else:
         ok = False
         print("FAIL  la latencia CRECE con el tiempo -> retardo acumulativo")

@@ -70,6 +70,14 @@ if errorlevel 1 (
 echo Modelo descargado en models\yolov8s.pt
 :model_ok
 
+rem --- 4b) Verificar el banco de videos locales de prueba ---
+rem Los clips vienen en el repo/ZIP; si falta alguno se sintetiza uno
+rem local con OpenCV. Nunca se descarga nada (funciona 100% offline).
+if exist "data\videos\prueba.mp4" if exist "data\videos\retail.mp4" goto :videos_ok
+echo Preparando videos de demostracion locales...
+python -c "from src.config import load_settings;from src.demo_video import ensure_demo_clips;ensure_demo_clips(load_settings().video_presets)"
+:videos_ok
+
 rem --- 5) Lanzar la aplicacion ---
 echo.
 echo Iniciando la aplicacion...

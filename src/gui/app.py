@@ -19,11 +19,13 @@ from ..capture import CaptureThread, FrameSlot
 from ..config import Settings
 from ..engine import InferWorker
 from ..geometry import Calibration
+from ..demo_video import ensure_clip
 from ..paths import VIDEOS_DIR
 from ..storage import EventWriter, export_csv, fetch_events, init_db
 from .viewer import ImageViewerModal
 
-SOURCES = ["Webcam Integrada", "Celular (IP/DroidCam)", "Archivo de Video (MP4)"]
+SOURCES = ["Webcam Integrada", "Cámara de Celular / Stream IP",
+           "Archivo de Video (Local)"]
 SPEEDS = ["0.5x", "1.0x", "1.5x", "2.0x"]
 
 # ---- Paleta VMS / CCTV comercial ----
@@ -77,7 +79,7 @@ class SecurityApp(ctk.CTk):
 
         # --- estado de render ---
         self._last_out_seq = -1
-        self._cached_pil = None          # PIL del último frame anotado
+        self._cached_rgb = None          # ndarray RGB del último frame
         self._painted_key = None         # (seq, w, h) ya pintado en pantalla
         self._disp = (0, 0, 1.0, 16, 9)  # ox, oy, scale, img_w, img_h
         self._slider_updating = False
@@ -160,10 +162,27 @@ class SecurityApp(ctk.CTk):
         self.entry_src.pack(side="left", padx=6)
         self.entry_src.insert(0, str(self.s.webcam_index))
         self.btn_browse = ctk.CTkButton(
-            srcf, text="📁", width=34, height=30, corner_radius=8,
-            fg_color=C_CARD, border_width=1, border_color=C_BORDER,
-            hover_color=C_BORDER, command=self._browse_file)
+            srcf, text="📁 Examinar video…", width=140, height=30,
+            corner_radius=8, fg_color=C_CARD, border_width=1,
+            border_color=C_BORDER, hover_color=C_BORDER,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            command=self._browse_file)
         self.btn_browse.pack(side="left")
+
+        # Menú de videos locales de prueba (settings.video_presets):
+        # clips precargados en data/videos/ — funcionan sin internet y
+        # se reproducen en bucle infinito.
+        preset_names = [p["name"] for p in self.s.video_presets]
+        self.menu_presets = ctk.CTkOptionMenu(
+            srcf, values=preset_names or ["(sin presets)"], width=180,
+            height=30, corner_radius=8, fg_color=C_CARD,
+            button_color=C_ACCENT, button_hover_color=C_ACCENT_H,
+            dropdown_fg_color=C_CARD, dropdown_hover_color=C_BORDER,
+            text_color=C_TEXT, font=ctk.CTkFont(size=12, weight="bold"),
+            state="normal" if preset_names else "disabled",
+            command=self._load_video_preset)
+        self.menu_presets.set("🎬 Videos de prueba")
+        self.menu_presets.pack(side="left", padx=6)
 
         # ==================== SIDEBAR ====================
         sb = ctk.CTkFrame(self.tab_live, width=285, corner_radius=10,
@@ -380,29 +399,63 @@ class SecurityApp(ctk.CTk):
 
     def _on_source_change(self, choice):
         self.entry_src.delete(0, "end")
-        if choice == "Webcam Integrada":
+        if choice == SOURCES[0]:
             self.entry_src.insert(0, str(self.s.webcam_index))
-        elif choice == "Archivo de Video (MP4)":
+        elif choice == SOURCES[2]:
             self.entry_src.insert(0, self.s.default_video)
         else:
             self.entry_src.insert(0, self.s.default_stream_url)
 
     def _browse_file(self):
+        # El diálogo nativo es modal: pausa el repintado mientras está
+        # abierto, pero la captura sigue en su hilo — al cerrarse, la GUI
+        # retoma el último frame del slot sin perder la señal.
         path = fd.askopenfilename(
+            parent=self, title="Seleccionar archivo de video",
             initialdir=VIDEOS_DIR,
-            filetypes=[("Video", "*.mp4 *.avi *.mkv *.mov"), ("Todos", "*.*")])
-        if path:
-            self.combo_source.set("Archivo de Video (MP4)")
-            self.entry_src.delete(0, "end")
-            self.entry_src.insert(0, path)
+            filetypes=[("Video", "*.mp4 *.avi *.mkv *.mov"),
+                       ("Todos los archivos", "*.*")])
+        if not path:
+            return
+        self.combo_source.set(SOURCES[2])
+        self.entry_src.delete(0, "end")
+        self.entry_src.insert(0, path)
+        self.s.default_video = path      # queda como video activo
+        nombre = os.path.basename(path)
+        self._log(f"Video seleccionado: {nombre}"
+                  + (" — se aplicará al iniciar de nuevo."
+                     if self.running else ""))
+        if not self.running:
+            self._set_status(f"Video: {nombre[:26]}", C_CYAN)
+
+    def _load_video_preset(self, name):
+        """Carga un clip local de settings.video_presets: cambia la fuente
+        a "Archivo de Video" y rellena la ruta. El clip se crea
+        (descarga/síntesis) si faltara. No toca la captura en curso: el
+        cambio se aplica al presionar Iniciar."""
+        preset = next((p for p in self.s.video_presets
+                       if p.get("name") == name), None)
+        self.menu_presets.set("🎬 Videos de prueba")
+        if not preset:
+            return
+        path = ensure_clip(preset)      # bucle local siempre disponible
+        self.combo_source.set(SOURCES[2])
+        self.entry_src.delete(0, "end")
+        self.entry_src.insert(0, path)
+        self.s.default_video = path
+        self._log(f"Video de prueba: {name}"
+                  + (" — se aplicará al iniciar de nuevo."
+                     if self.running else ""))
+        if not self.running:
+            self._set_status("Fuente lista", C_CYAN)
 
     def _build_spec(self):
         sel = self.combo_source.get()
         raw = self.entry_src.get().strip()
-        if sel == "Webcam Integrada":
+        if sel == SOURCES[0]:
             idx = int(raw) if raw.isdigit() else self.s.webcam_index
             return {"kind": "webcam", "index": idx}
-        if sel == "Archivo de Video (MP4)":
+        if sel == SOURCES[2]:
             return {"kind": "file", "path": raw}
         return {"kind": "stream", "url": raw}
 
@@ -444,7 +497,7 @@ class SecurityApp(ctk.CTk):
         self._set_status("Detenido", C_MUTED)
         # Soltar el frame cacheado: sin esto, un <Configure> (resize)
         # repintaría el último cuadro sobre el texto "Cámara detenida".
-        self._cached_pil = None
+        self._cached_rgb = None
         self._painted_key = None
         self.video_label.configure(image="", text="Cámara detenida")
         self._log("Monitoreo detenido por el usuario.")
@@ -520,30 +573,31 @@ class SecurityApp(ctk.CTk):
             self.lbl_in.configure(text=str(stats["in"]))
             self.lbl_out.configure(text=str(stats["out"]))
             self.lbl_fps.configure(
-                text=f"Analítica: {stats['infer_fps']:.1f} FPS")
+                text=f"Analítica: {stats['infer_fps']:.1f} FPS · "
+                     f"YOLO {stats.get('det_fps', 0):.1f} Hz")
 
             rgb = cv2.cvtColor(data["frame"], cv2.COLOR_BGR2RGB)
-            self._cached_pil = Image.fromarray(rgb)
+            self._cached_rgb = rgb
 
         # Hold-last-frame: si captura/inferencia se demora con un frame
         # (frame drops del stream), en cada tick se repinta el último
         # cuadro cacheado — la pantalla nunca queda en negro ni alterna
         # imagen/texto, así no hay "flash" ni parpadeo. _repaint() es
         # idempotente: no repite el resize si (seq, tamaño) no cambió.
-        if self.running and self._cached_pil is not None:
+        if self.running and self._cached_rgb is not None:
             self._repaint()
 
         self.after(max(15, int(1000 / self.s.render_fps)), self._render_tick)
 
     def _repaint(self):
-        if self._cached_pil is None:
+        if self._cached_rgb is None:
             return
         w = max(100, self.video_label.winfo_width())
         h = max(100, self.video_label.winfo_height())
         key = (self._last_out_seq, w, h)
         if key == self._painted_key:
             return                       # mismo cuadro al mismo tamaño
-        iw, ih = self._cached_pil.size
+        ih, iw = self._cached_rgb.shape[:2]
         scale = min(w / iw, h / ih)
         dw, dh = max(1, int(iw * scale)), max(1, int(ih * scale))
         ox, oy = (w - dw) // 2, (h - dh) // 2
@@ -552,8 +606,11 @@ class SecurityApp(ctk.CTk):
         # ImageTk.PhotoImage no aplica escalado de widgets: la imagen se
         # muestra exactamente dw×dh px y centrada por el anchor del label,
         # por lo que (ox, oy, scale) describe el letterbox real en pantalla.
-        resized = self._cached_pil.resize((dw, dh), Image.Resampling.BILINEAR)
-        tk_img = ImageTk.PhotoImage(resized)
+        # cv2.resize (vectorizado, INTER_LINEAR) es ~3x más rápido que
+        # PIL.resize a este tamaño: el repaint no come CPU del mainloop.
+        resized = cv2.resize(self._cached_rgb, (dw, dh),
+                             interpolation=cv2.INTER_LINEAR)
+        tk_img = ImageTk.PhotoImage(Image.fromarray(resized))
         self.video_label.configure(image=tk_img, text="")
         self.video_label.image = tk_img
         self._painted_key = key

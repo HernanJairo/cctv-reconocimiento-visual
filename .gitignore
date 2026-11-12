@@ -4,15 +4,15 @@ __pycache__/
 .env
 venv/
 
-# Modelos pesados (evita superar limites de GitHub)
-models/*.pt
+# Modelos: yolov8s.pt SE SUBE al repo (entrega sin descargas); los demás
+# pesos regenerables/exportados siguen ignorados.
 models/*.onnx
+models/yolov8n.pt
 
-# Datos locales y evidencias
+# Datos locales y evidencias (los videos de prueba SÍ se versionan)
 data/capturas/*.jpg
 data/reportes/*.csv
-data/seguridad.db
-data/videos/*.mp4
+data/seguridad.db*
 
 # Configuración de editores
 .vscode/
